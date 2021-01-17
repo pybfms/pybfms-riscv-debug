@@ -40,6 +40,8 @@ class RiscvDebugBfm():
         self.elffile_fp = None
         self.symtab = None
         
+        self.callstack = []
+        
         self.last_limit = 0
         
         pass
@@ -168,10 +170,10 @@ class RiscvDebugBfm():
     @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
     def _instr_exec(self, 
                     pc, 
+                    instr, 
                     mem_waddr,
                     mem_wdata,
                     mem_wmask,
-                    instr, 
                     count):
 #        if mem_wmask:
 #            print("Write: " + hex(mem_waddr) + " = " + hex(mem_wmask))
@@ -183,9 +185,43 @@ class RiscvDebugBfm():
         # Handle disassembly            
         if self.en_disasm:
             self._set_disasm_s(self.disasm(pc, instr))
-        
+
         if pc in self.addr2sym_m.keys():
+            self.callstack.append(pc)
+            print("enter" + self.addr2sym_m[pc])
             self._set_func_s(self.addr2sym_m[pc])
+            
+        if (instr & 0x7f) == 0x67:
+            # jalr
+            rs1 = (instr >> 15) & 0x1f
+            rd = (instr >> 7) & 0x1f
+            print("jalr: rs1=" + str(rs1) + " rd=" + str(rd))
+            
+            if rd == 0 and rs1 != 0:
+                print("pop")
+            elif rd != 0 and rs1 == 0:
+                print("push")
+        elif (instr & 0x7f) == 0x6f:
+            # jal
+            rd = (instr >> 7) & 0x1f
+            print("jal: rd=" + str(rd))
+        elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 4:
+            rd = (instr >> 7) & 0x1f
+            if rd == 1: # Return
+                if len(self.callstack) > 0:
+                    old_pc = self.callstack.pop()
+                    print("leave " + self.addr2sym_m[old_pc])
+                    if len(self.callstack) > 0:
+                        self._set_func_s(self.addr2sym_m[self.callstack[-1]])
+                else:
+                    print("Warning: return without callstack entry")
+        elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 8:
+            print("c.jalr")
+        elif (instr & 0x3) == 1 and ((instr >> 13) & 0x7) == 1:
+            print("c.jal")
+            
+        # TODO: c.jal
+
             
     @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t)
     def _write_reg(self, addr, data):
@@ -211,8 +247,15 @@ class RiscvDebugBfm():
     @pybfms.import_task(pybfms.uint32_t)
     def _set_trace_level(self, l):
         pass
-        
+    
     def disasm(self, pc, instr):
+        if (instr & 0x3) == 0x3:
+            return self.disasm_32(pc, instr)
+        else:
+            return self.disasm_16(pc, instr)
+        
+        
+    def disasm_32(self, pc, instr):
         ret = ""
         
         rd = ((instr >> 7) & 0x1F)
@@ -346,5 +389,40 @@ class RiscvDebugBfm():
             ret = "ill "
             
         return ret
+    
+    def disasm_16(self, pc, instr):
+        ret = "ill"
         
+        rnm = [
+            "zero", "ra", "sp", "gp", "tp",
+            "t0", "t1", "t2", "s0", "s1",
+            "a0", "a1", "a2", "a3", "a4",
+            "a5", "a6", "a7", "s2", "s3",
+            "s4", "s5", "s6", "s7", "s8",
+            "s9", "s10", "s11", "t3", "t4",
+            "t5", "t6"
+            ]
+        
+        if (instr & 0x3) == 0:
+            pass
+        elif (instr & 0x3) == 1:
+            op = (instr >> 13) & 0x7
+            rd = (instr >> 7) & 0x1f
+            imm = (instr >> 2) & 0x1f
+            imm |= ((instr >> 12) & 1) << 5
+            
+            if op == 0:
+                if rd == 0:
+                    ret = "c.nop"
+                else:
+                    ret = "c.addi %s,%d" % (rnm[rd], imm)
+            elif op == 1:
+                pass
+            elif op == 2:
+                
+                ret = "c.li %s,%d" % (rnm[rd], imm)
+        elif (instr & 0x3) == 2:
+            pass
+        
+        return ret;
         
