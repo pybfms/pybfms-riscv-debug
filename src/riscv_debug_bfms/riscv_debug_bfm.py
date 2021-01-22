@@ -34,6 +34,7 @@ class RiscvDebugBfm():
         self.regs = [0]*32
         
         self.addr2sym_m = {}
+        self.sym2addr_m = {}
         
         self.instr_exec_f = set()
         self.elffile = None
@@ -41,10 +42,91 @@ class RiscvDebugBfm():
         self.symtab = None
         
         self.callstack = []
+        self.frame_idx = 0
+        self.last_instr = 0
         
         self.last_limit = 0
+
+        self.entry_exit_addr2cb_m = {}
+        self.entry_exit_cb2addr_m = {}
         
         pass
+    
+    async def on_entry(self, sym_or_addr):
+        """ Waits for a function identified by name or symbol to be entered"""
+        target_addr_s = set()
+        if isinstance(sym_or_addr, str):
+            # It's a symbol
+            if sym_or_addr in self.sym2addr_m.keys():
+                target_addr_s.add(self.sym2addr_m[sym_or_addr])
+            else:
+                raise Exception("Symbol \"" + sym_or_addr + "\" not found")
+        elif isinstance(sym_or_addr, list):
+            for e in sym_or_addr:
+                if isinstance(e, str):
+                    # It's a symbol
+                    if e in self.sym2addr_m.keys():
+                        target_addr_s.add(self.sym2addr_m[e])
+                    else:
+                        raise Exception("Symbol \"" + e + "\" not found")
+        else:
+            # It's an address
+            target_addr_s.add(sym_or_addr)
+            
+        ev = pybfms.event()
+        
+        def waiter(pc, sym, is_entry):
+            if is_entry and pc in target_addr_s:
+                ev.set()
+
+        for a in target_addr_s:                
+            if a in self.entry_exit_addr2cb_m.keys():
+                self.entry_exit_addr2cb_m[a].append(waiter)
+            else:
+                self.entry_exit_addr2cb_m[a] = [waiter]
+
+        await ev.wait()
+        
+        for a in target_addr_s:                
+            self.entry_exit_addr2cb_m[a].remove(waiter)
+        
+    async def on_exit(self, sym_or_addr):
+        """ Waits for a function identified by name or symbol to be entered"""
+        target_addr_s = set()
+        if isinstance(sym_or_addr, str):
+            # It's a symbol
+            if sym_or_addr in self.sym2addr_m.keys():
+                target_addr_s.add(self.sym2addr_m[sym_or_addr])
+            else:
+                raise Exception("Symbol \"" + sym_or_addr + "\" not found")
+        elif isinstance(sym_or_addr, list):
+            for e in sym_or_addr:
+                if isinstance(e, str):
+                    # It's a symbol
+                    if e in self.sym2addr_m.keys():
+                        target_addr_s.add(self.sym2addr_m[e])
+                    else:
+                        raise Exception("Symbol \"" + e + "\" not found")
+        else:
+            # It's an address
+            target_addr_s.add(sym_or_addr)
+            
+        ev = pybfms.event()
+        
+        def waiter(pc, sym, is_entry):
+            if is_entry and pc in target_addr_s:
+                ev.set()
+
+        for a in target_addr_s:                
+            if a in self.entry_exit_addr2cb_m.keys():
+                self.entry_exit_addr2cb_m[a].append(waiter)
+            else:
+                self.entry_exit_addr2cb_m[a] = [waiter]
+
+        await ev.wait()
+        
+        for a in target_addr_s:                
+            self.entry_exit_addr2cb_m[a].remove(waiter)        
     
     def trace_level(self, l : RiscvDebugTraceLevel):
         self._set_trace_level(int(l))
@@ -64,6 +146,7 @@ class RiscvDebugBfm():
             sym = self.symtab.get_symbol(i)
             if sym.name != "":
                 self.addr2sym_m[sym["st_value"]] = sym.name
+                self.sym2addr_m[sym.name] = sym["st_value"]
     
     def add_sym_cb(self, name, f):
         if self.elffile is None:
@@ -75,6 +158,10 @@ class RiscvDebugBfm():
             raise Exception("Symbol \"" + name + "\" does not exist");
         
         pass
+    
+    def add_enter_exit_cb(self, f):
+        self.enter_exit_cb.append(f)
+        
     
     def add_instr_exec_cb(self, f):
         self.instr_exec_f.add(f)
@@ -144,7 +231,8 @@ class RiscvDebugBfm():
                 i+=1
         self.disasm_s = v
         
-    def _set_func_s(self, v):
+    def _set_func_s(self, frame, v):
+        self._clr_func(frame)
         
         #
         if len(v) > self.msg_sz:
@@ -152,23 +240,29 @@ class RiscvDebugBfm():
             v += "..."
         
         for i,c in enumerate(v.encode()):
-            self._set_func_c(i, c)
+            self._set_func_c(frame, i, c)
 
         # If the new string is shorter than the old string,
         # null out the leftover characters
-        if len(self.func_s) > len(v):
-            i=len(v)
-            while i < len(self.func_s):
-                self._set_func_c(i, 0)
-                i+=1
-        self.func_s = v
+#        if len(self.func_s) > len(v):
+#            i=len(v)
+#            while i < len(self.func_s):
+#                self._set_func_c(frame, i, 0)
+#                i+=1
+#        self.func_s = v
+
+    @pybfms.import_task(pybfms.uint8_t)
+    def _clr_func(self, frame):
+        pass
+
         
     @pybfms.export_task(pybfms.uint32_t)
     def _set_parameters(self, msg_sz):
         self.msg_sz = msg_sz
     
-    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
+    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
     def _instr_exec(self, 
+                    last_instr,
                     pc, 
                     instr, 
                     mem_waddr,
@@ -186,49 +280,101 @@ class RiscvDebugBfm():
         if self.en_disasm:
             self._set_disasm_s(self.disasm(pc, instr))
 
-        if pc in self.addr2sym_m.keys():
-            self.callstack.append(pc)
-            print("enter" + self.addr2sym_m[pc])
-            self._set_func_s(self.addr2sym_m[pc])
-            
+        (last_is_push,last_is_pop) = self.is_pushpop(last_instr)
+        
+        if last_is_push:
+            # Last was the push, so 'pc' is the target
+            self.do_call(pc)
+        elif last_is_pop:
+            self.do_ret(pc)
+        elif last_is_push and last_is_pop:
+            print("TODO: both push/pop")
+        else:
+            # TODO: If this is a branch instruction, check
+            # to see if we've landed on a symbol
+            pass
+                
+        self.last_instr = instr
+        
+    def is_pushpop(self, instr):
+        is_push = False 
+        is_pop = False
+        
         if (instr & 0x7f) == 0x67:
             # jalr
             rs1 = (instr >> 15) & 0x1f
             rd = (instr >> 7) & 0x1f
-            print("jalr: rs1=" + str(rs1) + " rd=" + str(rd))
             
-            if rd == 0 and rs1 != 0:
-                print("pop")
-            elif rd != 0 and rs1 == 0:
-                print("push")
+            rs1_islink = rs1 in [1,5]
+            rd_islink = rd in [1,5]
+            
+            if not rd_islink and rs1_islink:
+                is_pop = True
+            elif rd_islink and not rs1_islink:
+                is_push = True
+            elif rd_islink and rs1_islink:
+                if rd != rs1:
+                    is_push = True
+                    is_pop = True
+                else:
+                    is_push = True
         elif (instr & 0x7f) == 0x6f:
             # jal
             rd = (instr >> 7) & 0x1f
-            print("jal: rd=" + str(rd))
+            is_push = rd in [1,5]
         elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 4:
+            # c.jal
             rd = (instr >> 7) & 0x1f
-            if rd == 1: # Return
-                if len(self.callstack) > 0:
-                    old_pc = self.callstack.pop()
-                    print("leave " + self.addr2sym_m[old_pc])
-                    if len(self.callstack) > 0:
-                        self._set_func_s(self.addr2sym_m[self.callstack[-1]])
-                else:
-                    print("Warning: return without callstack entry")
+            is_push = rd in [1,5]
         elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 8:
-            print("c.jalr")
+            print("TODO: c.jalr")
         elif (instr & 0x3) == 1 and ((instr >> 13) & 0x7) == 1:
-            print("c.jal")
+            print("TODO: c.jal")
+        
+        return (is_push,is_pop)
+    
+    def do_call(self, pc):
+        if pc in self.addr2sym_m.keys():
+            sym = self.addr2sym_m[pc]
+        else:
+            sym = "<unknown " + hex(pc) + ">"
             
-        # TODO: c.jal
+        self.callstack.append((pc,sym))
 
+        if pc in self.entry_exit_addr2cb_m.keys():
+            # Ensure we don't get stuck modifying the list in-flight
+            for cb in self.entry_exit_addr2cb_m[pc]:
+                cb(pc, sym, True)
+                
+        self._set_func_s(self.frame_idx, sym)
+        self.frame_idx += 1
+    
+    def do_ret(self, pc):
+        if len(self.callstack) > 0:
+            (pc,sym) = self.callstack.pop()
+        else:
+            sym = "<unknown " + hex(pc) + ">"
+            
+        if pc in self.entry_exit_addr2cb_m.keys():
+            # Ensure we don't get stuck modifying the list in-flight
+            for cb in self.entry_exit_addr2cb_m[pc]:
+                cb(pc, sym, False)
+
+        # TODO: handle swapping windows
+
+        if self.frame_idx > 0:
+            self._clr_func(self.frame_idx)
+            self.frame_idx -= 1
+        else:
+            self._clr_func(0)
+        
             
     @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t)
     def _write_reg(self, addr, data):
         self.regs[addr] = data
     
-    @pybfms.import_task(pybfms.uint8_t,pybfms.uint8_t)
-    def _set_func_c(self, idx, ch):
+    @pybfms.import_task(pybfms.uint8_t,pybfms.uint8_t,pybfms.uint8_t)
+    def _set_func_c(self, frame, idx, ch):
         pass
     
     @pybfms.import_task(pybfms.uint8_t,pybfms.uint8_t)

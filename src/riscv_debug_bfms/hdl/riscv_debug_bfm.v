@@ -41,6 +41,12 @@ module riscv_debug_bfm #(
             	ctxt.pc <= pc;
             	ctxt.instr <= instr;
             	
+           		// Cache the registers updated while we're 
+           		// not notifying the Python environment
+           		if (|rd_addr) begin
+           			_ctrl.reg_written[rd_addr] <= 1;
+           		end
+            	
             	// Update register value on write
             	if (|rd_addr) begin
             		case (rd_addr) 
@@ -70,40 +76,33 @@ module riscv_debug_bfm #(
             	end
             	
             	if (_ctrl.trace_instr_all 
-            			|| (_ctrl.trace_instr_jump && (
-            				_ctrl.last_instr[6:0] == 7'b1101111 || // jal
-            				_ctrl.last_instr[6:0] == 7'b1100111))  // jalr
-            			|| (_ctrl.trace_instr_call && (
-            				_ctrl.last_instr[6:0] == 7'b1101111 ||
-            				_ctrl.last_instr[6:0] == 7'b1100111) /*&& _ctrl.last_instr[11:7] != 5'b0*/)
-            			|| _ctrl.hw_breakpoint 
-            			|| _ctrl.instr_limit_count == 1
-            			|| _ctrl.trace_mem_writes && |mem_wmask) begin
-            		// For jumps and calls, we signal the target instruction
-            		// instead of the source
-            	
-            		// First, update register information changed 
-            		// since the last instruction we signaled to the Python side
-//            		for (i=0; i<32; i++) begin
-//            			if (reg_written[i]) begin
-//            				_write_reg(i, regs[i]);
-//            			end
-//            		end
+            			|| (_ctrl.trace_mem_writes && |mem_wmask)
+            			|| (_ctrl.instr_limit_count == 1)) begin
+            		_update_exec_state();
             		_ctrl.reg_written <= 32'h0;
-            
-            		// Send the current-instruction's write (if any)
-            		if (|rd_addr) begin
-           				_write_reg(rd_addr, rd_wdata);
+            	end else if (_ctrl.trace_instr_jump) begin
+            		// Notify on all jumps
+           			if (_ctrl.last_instr[6:0] == 7'b1101111 || // jal
+           				_ctrl.last_instr[6:0] == 7'b1100111) begin // jalr
+           				_update_exec_state();
+            			_ctrl.reg_written <= 32'h0;
+           			end 
+            	end else if (_ctrl.trace_instr_call) begin
+            		// Notify on call/ret instructions
+            		if (_ctrl.last_instr[6:0] == 7'b1101111 || // jal
+           				_ctrl.last_instr[6:0] == 7'b1100111) begin  // jalr/*&& _ctrl.last_instr[11:7] != 5'b0*/)
+           				if (_ctrl.last_instr[11:7] == 1 || _ctrl.last_instr[11:7] == 5 ||
+           						_ctrl.last_instr[19:15] == 1 || _ctrl.last_instr[19:15] == 5) begin
+           					// Likely call or return
+           					// Note that we update the Python environment on
+           					// the target instruction, not its source
+           					_update_exec_state();
+           					_ctrl.reg_written <= 32'h0;
+           				end
+            		end else if ((_ctrl.last_instr[1:0] == 'b10 && _ctrl.last_instr[15:13] == 'b100)
+            				|| (_ctrl.last_instr[1:0] == 'b10 && _ctrl.last_instr[15:13] == 'b001)) begin
+            			// Compressed c.jal/c.jalr
             		end
-            		
-            		// Finally, signal the instruction execution
-            		_instr_exec(
-            				pc, 
-            				instr, 
-            				mem_addr,
-            				mem_wdata,
-            				mem_wmask,
-            				_ctrl.instr_count);
             	end else begin
             		// Cache the registers updated while we're 
             		// not notifying the Python environment
@@ -125,13 +124,124 @@ module riscv_debug_bfm #(
         _set_parameters(MSG_SZ);
     end
     endtask
+    	
+    task _update_exec_state;
+    begin
+    	// Send the current-instruction's write (if any)
+    	if (|rd_addr) begin
+    		_write_reg(rd_addr, rd_wdata);
+    	end
+    	
+    	// Send previously-updated registers
+    	if (_ctrl.reg_written[1]) _write_reg(rd_addr, ctxt.regs.x1);
+    	if (_ctrl.reg_written[2]) _write_reg(rd_addr, ctxt.regs.x2);
+    	if (_ctrl.reg_written[3]) _write_reg(rd_addr, ctxt.regs.x3);
+    	if (_ctrl.reg_written[4]) _write_reg(rd_addr, ctxt.regs.x4);
+    	if (_ctrl.reg_written[5]) _write_reg(rd_addr, ctxt.regs.x5);
+    	if (_ctrl.reg_written[6]) _write_reg(rd_addr, ctxt.regs.x6);
+    	if (_ctrl.reg_written[7]) _write_reg(rd_addr, ctxt.regs.x7);
+    	if (_ctrl.reg_written[8]) _write_reg(rd_addr, ctxt.regs.x8);
+    	if (_ctrl.reg_written[9]) _write_reg(rd_addr, ctxt.regs.x9);
+    	if (_ctrl.reg_written[10]) _write_reg(rd_addr, ctxt.regs.x10);
+    	if (_ctrl.reg_written[11]) _write_reg(rd_addr, ctxt.regs.x11);
+    	if (_ctrl.reg_written[12]) _write_reg(rd_addr, ctxt.regs.x12);
+    	if (_ctrl.reg_written[13]) _write_reg(rd_addr, ctxt.regs.x13);
+    	if (_ctrl.reg_written[14]) _write_reg(rd_addr, ctxt.regs.x14);
+    	if (_ctrl.reg_written[15]) _write_reg(rd_addr, ctxt.regs.x15);
+    	if (_ctrl.reg_written[16]) _write_reg(rd_addr, ctxt.regs.x16);
+    	if (_ctrl.reg_written[17]) _write_reg(rd_addr, ctxt.regs.x17);
+    	if (_ctrl.reg_written[18]) _write_reg(rd_addr, ctxt.regs.x18);
+    	if (_ctrl.reg_written[19]) _write_reg(rd_addr, ctxt.regs.x19);
+    	if (_ctrl.reg_written[20]) _write_reg(rd_addr, ctxt.regs.x20);
+    	if (_ctrl.reg_written[21]) _write_reg(rd_addr, ctxt.regs.x21);
+    	if (_ctrl.reg_written[22]) _write_reg(rd_addr, ctxt.regs.x22);
+    	if (_ctrl.reg_written[23]) _write_reg(rd_addr, ctxt.regs.x23);
+    	if (_ctrl.reg_written[24]) _write_reg(rd_addr, ctxt.regs.x24);
+    	if (_ctrl.reg_written[25]) _write_reg(rd_addr, ctxt.regs.x25);
+    	if (_ctrl.reg_written[26]) _write_reg(rd_addr, ctxt.regs.x26);
+    	if (_ctrl.reg_written[27]) _write_reg(rd_addr, ctxt.regs.x27);
+    	if (_ctrl.reg_written[28]) _write_reg(rd_addr, ctxt.regs.x28);
+    	if (_ctrl.reg_written[29]) _write_reg(rd_addr, ctxt.regs.x29);
+    	if (_ctrl.reg_written[30]) _write_reg(rd_addr, ctxt.regs.x30);
+    	if (_ctrl.reg_written[31]) _write_reg(rd_addr, ctxt.regs.x31);
+
+    	// Finally, signal the instruction execution
+    	_instr_exec(
+    			_ctrl.last_instr,
+    			pc, 
+    			instr, 
+    			mem_addr,
+    			mem_wdata,
+    			mem_wmask,
+    			_ctrl.instr_count);
+    end
+    endtask
     
-    task _set_func_c(input reg[7:0] idx, input reg[7:0] ch);
+    task _set_func_c(
+    	input reg[7:0]		frame,
+    	input reg[7:0] 		idx, 
+    	input reg[7:0] 		ch);
    	begin
    		// Must invert the actual index
    		idx = MSG_SZ-idx-1;
-   		ctxt.symbol &= ~('hFF << 8*idx);
-   		ctxt.symbol |= (ch << 8*idx);
+   	
+   		case (frame)
+   			0: begin
+   				ctxt.frame0 = ((ctxt.frame0 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			1: begin
+   				ctxt.frame1 = ((ctxt.frame1 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			2: begin
+   				ctxt.frame2 = ((ctxt.frame2 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			3: begin
+   				ctxt.frame3 = ((ctxt.frame3 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			4: begin
+   				ctxt.frame4 = ((ctxt.frame4 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			5: begin
+   				ctxt.frame5 = ((ctxt.frame5 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			6: begin
+   				ctxt.frame6 = ((ctxt.frame6 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   			7: begin
+   				ctxt.frame7 = ((ctxt.frame7 & ~('hFF << 8*idx)) | (ch << 8*idx));
+   			end
+   		endcase
+   	end
+    endtask
+    
+    task _clr_func(input reg[7:0] frame);
+   	begin
+   		case (frame)
+   			0: begin
+   				ctxt.frame0 = {MSG_SZ{1'b0}};
+   			end
+   			1: begin
+   				ctxt.frame1 = {MSG_SZ{1'b0}};
+   			end
+   			2: begin
+   				ctxt.frame2 = {MSG_SZ{1'b0}};
+   			end
+   			3: begin
+   				ctxt.frame3 = {MSG_SZ{1'b0}};
+   			end
+   			4: begin
+   				ctxt.frame4 = {MSG_SZ{1'b0}};
+   			end
+   			5: begin
+   				ctxt.frame5 = {MSG_SZ{1'b0}};
+   			end
+   			6: begin
+   				ctxt.frame6 = {MSG_SZ{1'b0}};
+   			end
+   			7: begin
+   				ctxt.frame7 = {MSG_SZ{1'b0}};
+   			end
+   		endcase
    	end
     endtask
     
@@ -139,8 +249,7 @@ module riscv_debug_bfm #(
    	begin
    		// Must invert the actual index
    		idx = MSG_SZ-idx-1;
-   		ctxt.disasm &= ~('hFF << 8*idx);
-   		ctxt.disasm |= (ch << 8*idx);
+   		ctxt.disasm = ((ctxt.disasm & ~('hFF << 8*idx)) | (ch << 8*idx));
    	end
     endtask
     
@@ -188,7 +297,16 @@ module riscv_debug_bfm_ctxt_m #(
 	reg[31:0]				instr;
 	reg[31:0]				pc;
 	riscv_debug_bfm_regs_m	regs();
-	reg[8*MSG_SZ-1:0]		symbol = {MSG_SZ{8'h00}};
+
+	// TODO: Should identify stack in some way (thread?)
+	reg[8*MSG_SZ-1:0]		frame0 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame1 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame2 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame3 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame4 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame5 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame6 = {MSG_SZ{8'h00}};
+	reg[8*MSG_SZ-1:0]		frame7 = {MSG_SZ{8'h00}};
 endmodule
 
 // Registers traced by the debug BFM
@@ -260,19 +378,15 @@ endmodule
 // Internal control variables used by the BFM
 module riscv_debug_bfm_ctrl_m();
 	reg[31:0]				reg_written = 32'h0;
-	reg						trace_instr_all   = 1;
-	reg						trace_instr_jump  = 1;
+	reg						trace_instr_all   = 0;
+	reg						trace_instr_jump  = 0;
 	reg						trace_instr_call  = 1;
-	reg						trace_reg_writes  = 1;
+	reg						trace_reg_writes  = 0;
 	reg						trace_mem_writes  = 1;
 	reg[31:0]				instr_limit_count = 0;
 	reg[31:0]				instr_count = 0;
 	
-	reg[31:0]				n_hw_breakpoint = 0;
-//	reg[31:0]				hw_breakpoint[31:0];
-	
     reg            			in_reset = 0;
     
-    reg						hw_breakpoint = 0;
     reg[31:0]				last_instr;
 endmodule
