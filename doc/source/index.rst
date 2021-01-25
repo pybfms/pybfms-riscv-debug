@@ -36,6 +36,11 @@ The RISC-V
 Debug Trace Features
 --------------------
 
+The RISC-V Debug BFM exposes a set of debug information via
+signals within the BFM. This enables the execution state 
+of the core to be correlated with other behavior in the design.
+
+
 Instruction Disassembly
 ^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -61,6 +66,37 @@ Wait for Function Enter/Exit
 
 Signal-level Interface
 ----------------------
+=======
+Signal-level Interface
+----------------------
+
+.. code-block:: sv
+
+  module riscv_debug_bfm #(
+        parameter MSG_SZ = 32         // Maximum characters in the message fields
+        ) (
+        input                clock,
+        input                reset,
+        input                valid,
+        input[31:0]          instr,
+        input                trap,
+        input                halt,
+        input                intr,
+        input[1:0]           mode,
+        input[1:0]           ixl,
+        input[4:0]           rd_addr,
+        input[31:0]          rd_wdata,
+        input[31:0]          pc,
+        input[31:0]          mem_addr,
+        input[3:0]           mem_wmask,
+        input[31:0]          mem_wdata
+        );
+
+Connecting the HDL BFM
+^^^^^^^^^^^^^^^^^^^^^^
+
+TODO: table describing each signal
+>>>>>>> origin/main
 
 .. code-block:: sv
 
