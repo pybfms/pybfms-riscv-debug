@@ -9,17 +9,14 @@ module riscv_debug_bfm #(
         input				reset,
 		input 				valid,
 		input[31:0] 		instr,
-		input				trap,
-		input 				halt,
 		input				intr,
-		input[1:0]			mode,
-		input[1:0]			ixl,
 		input[4:0] 			rd_addr,
 		input[31:0] 		rd_wdata,
 		input[31:0]			pc,
 		input[31:0]			mem_addr,
+		input[3:0]			mem_rmask,
 		input[3:0]			mem_wmask,
-		input[31:0]			mem_wdata
+		input[31:0]			mem_data
         );
 	
 	riscv_debug_bfm_ctrl_m	_ctrl();
@@ -37,6 +34,7 @@ module riscv_debug_bfm #(
             
             if (valid) begin
             	_ctrl.last_instr <= instr;
+            	_ctrl.last_pc    <= pc;
             	_ctrl.instr_count = _ctrl.instr_count + 1;
             	ctxt.pc <= pc;
             	ctxt.instr <= instr;
@@ -77,7 +75,8 @@ module riscv_debug_bfm #(
             	
             	if (_ctrl.trace_instr_all 
             			|| (_ctrl.trace_mem_writes && |mem_wmask)
-            			|| (_ctrl.instr_limit_count == 1)) begin
+            			|| (_ctrl.instr_limit_count == 1)
+            			|| intr) begin
             		_update_exec_state();
             		_ctrl.reg_written <= 32'h0;
             	end else if (_ctrl.trace_instr_jump) begin
@@ -167,11 +166,13 @@ module riscv_debug_bfm #(
 
     	// Finally, signal the instruction execution
     	_instr_exec(
+    			_ctrl.last_pc,
     			_ctrl.last_instr,
     			pc, 
     			instr, 
+    			intr,
     			mem_addr,
-    			mem_wdata,
+    			mem_data,
     			mem_wmask,
     			_ctrl.instr_count);
     end
@@ -378,8 +379,8 @@ endmodule
 // Internal control variables used by the BFM
 module riscv_debug_bfm_ctrl_m();
 	reg[31:0]				reg_written = 32'h0;
-	reg						trace_instr_all   = 0;
-	reg						trace_instr_jump  = 0;
+	reg						trace_instr_all   = 1;
+	reg						trace_instr_jump  = 1;
 	reg						trace_instr_call  = 1;
 	reg						trace_reg_writes  = 0;
 	reg						trace_mem_writes  = 1;
@@ -388,5 +389,6 @@ module riscv_debug_bfm_ctrl_m();
 	
     reg            			in_reset = 0;
     
+    reg[31:0]				last_pc;
     reg[31:0]				last_instr;
 endmodule

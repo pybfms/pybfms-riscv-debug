@@ -50,8 +50,10 @@ class RiscvDebugBfm():
         self.entry_exit_addr2cb_m = {}
         self.entry_exit_cb2addr_m = {}
         
-        pass
-    
+        self.memwrite_cb = set()
+        
+        self.trace_level : RiscvDebugTraceLevel = RiscvDebugTraceLevel.All
+        
     async def on_entry(self, sym_or_addr):
         """ Waits for a function identified by name or symbol to be entered"""
         target_addr_s = set()
@@ -129,7 +131,12 @@ class RiscvDebugBfm():
             self.entry_exit_addr2cb_m[a].remove(waiter)        
     
     def trace_level(self, l : RiscvDebugTraceLevel):
-        self._set_trace_level(int(l))
+        if self.trace_level != l:
+            self.trace_level = l
+            self._set_trace_level(int(l))
+            
+            if l != RiscvDebugTraceLevel.All:
+                self._set_disasm_s("")
     
     def load_elf(self, elf_path):
         """
@@ -168,6 +175,12 @@ class RiscvDebugBfm():
         
     def del_instr_exec_cb(self, f):
         self.instr_exec_f.remove(f)
+        
+    def add_memwrite_cb(self, f):
+        self.memwrite_cb.add(f)
+        
+    def del_memwrite_cb(self, f):
+        self.memwrite_cb.remove(f)
         
     def reg(self, addr):
         """Gets the value of the specified register"""
@@ -259,12 +272,14 @@ class RiscvDebugBfm():
     @pybfms.export_task(pybfms.uint32_t)
     def _set_parameters(self, msg_sz):
         self.msg_sz = msg_sz
-    
-    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
+
+    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
     def _instr_exec(self, 
+                    last_pc,
                     last_instr,
-                    pc, 
-                    instr, 
+                    pc,
+                    instr,
+                    intr,
                     mem_waddr,
                     mem_wdata,
                     mem_wmask,
@@ -276,11 +291,15 @@ class RiscvDebugBfm():
         for f in self.instr_exec_f:
             f(pc, instr)
 
+        if mem_wmask != 0:
+            for f in self.memwrite_cb:
+                f(mem_waddr, mem_wdata, mem_wmask)
+
         # Handle disassembly            
-        if self.en_disasm:
+        if self.trace_level == RiscvDebugTraceLevel.All:
             self._set_disasm_s(self.disasm(pc, instr))
 
-        (last_is_push,last_is_pop) = self.is_pushpop(last_instr)
+        (last_is_push,last_is_pop,npc) = self.is_pushpop(last_instr, 0)
         
         if last_is_push:
             # Last was the push, so 'pc' is the target
@@ -296,9 +315,10 @@ class RiscvDebugBfm():
                 
         self.last_instr = instr
         
-    def is_pushpop(self, instr):
+    def is_pushpop(self, instr, pc):
         is_push = False 
         is_pop = False
+        npc = pc
         
         if (instr & 0x7f) == 0x67:
             # jalr
@@ -318,20 +338,28 @@ class RiscvDebugBfm():
                     is_pop = True
                 else:
                     is_push = True
+            if is_push:
+                npc = pc+4
         elif (instr & 0x7f) == 0x6f:
             # jal
             rd = (instr >> 7) & 0x1f
             is_push = rd in [1,5]
+            
+            if is_push:
+                npc = pc+4
         elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 4:
             # c.jal
             rd = (instr >> 7) & 0x1f
             is_push = rd in [1,5]
+            
+            if is_push:
+                npc = pc+2
         elif (instr & 0x3) == 2 and ((instr >> 13) & 0x7) == 8:
             print("TODO: c.jalr")
         elif (instr & 0x3) == 1 and ((instr >> 13) & 0x7) == 1:
             print("TODO: c.jal")
         
-        return (is_push,is_pop)
+        return (is_push,is_pop,npc)
     
     def do_call(self, pc):
         if pc in self.addr2sym_m.keys():
@@ -445,8 +473,8 @@ class RiscvDebugBfm():
             imm = (instr >> 20) & 0xFFF
             rs1_v = self.regs[rs1]
             
-            if (imm & (1 << 11)):
-                imm = -(~imm+1)
+            if imm & 0x800:
+                imm = -((~imm&0xFFF)+1)
                 
             target = pc + imm
             
@@ -472,7 +500,7 @@ class RiscvDebugBfm():
             imm |= ((instr >> 31) & 0x1) << 12
             
             if (imm & 0x1000) != 0:
-                imm = -(~imm + 1)
+                imm = -((~imm&0x1FFF) + 1)
                 
             ret = "%s %s,%s,0x%04x" % (op, rnm[rs1], rnm[rs2], (pc+imm))
         elif (instr & 0x7F) == 0x03:
@@ -481,14 +509,14 @@ class RiscvDebugBfm():
             imm = (instr >> 20) & 0xFFF
             if imm & 0x800:
                 # Actually a signed number
-                imm = -(~imm + 1)
+                imm = -((~imm&0xFFF) + 1)
             ret = "%s %s,%d(%s)" % (op,rnm[rd],imm,rnm[rs1])
         elif (instr & 0x7F) == 0x23:
             op = ["sb", "sh", "sw", "ill"][(instr >> 12) & 0x3]
             imm = (((instr >> 25) & 0x7F) << 5) | ((instr >> 7) & 0x1F)
             if imm & 0x800:
                 # Actually a signed number
-                imm = -(~imm + 1)
+                imm = -((~imm&0xFFF) + 1)
                 
             ret = "%s %s,%d(%s)" % (op, rnm[rs2], imm,rnm[rs1])
         elif (instr & 0x7F) == 0x13:
@@ -497,10 +525,9 @@ class RiscvDebugBfm():
                       "xori", "srli", "ori", "andi"][f3]
             imm = (instr >> 20) & 0xFFF
             
-            if f3 == 0: # addi
-                if imm & 0x800:
-                    # Actually a signed number
-                    imm = -(~imm + 1)
+            if imm & 0x800 and f3 in [0, 2]: # addi, slti
+                # Actually a signed number
+                imm = -((~imm&0xFFF) + 1)
 
             if f3 == 0 and rs1 == 0:
                 if rd == 0:
