@@ -130,7 +130,7 @@ class RiscvDebugBfm():
         for a in target_addr_s:                
             self.entry_exit_addr2cb_m[a].remove(waiter)        
     
-    def trace_level(self, l : RiscvDebugTraceLevel):
+    def set_trace_level(self, l : RiscvDebugTraceLevel):
         if self.trace_level != l:
             self.trace_level = l
             self._set_trace_level(int(l))
