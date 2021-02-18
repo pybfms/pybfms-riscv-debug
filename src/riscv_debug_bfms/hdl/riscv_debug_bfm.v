@@ -35,6 +35,7 @@ module riscv_debug_bfm #(
             if (valid) begin
             	_ctrl.last_instr <= instr;
             	_ctrl.last_pc    <= pc;
+            	_ctrl.last_intr  <= intr;
             	_ctrl.instr_count = _ctrl.instr_count + 1;
             	ctxt.pc <= pc;
             	ctxt.instr <= instr;
@@ -76,7 +77,7 @@ module riscv_debug_bfm #(
             	if (_ctrl.trace_instr_all 
             			|| (_ctrl.trace_mem_writes && |mem_wmask)
             			|| (_ctrl.instr_limit_count == 1)
-            			|| intr) begin
+            			|| _ctrl.last_intr) begin
             		_update_exec_state();
             		_ctrl.reg_written <= 32'h0;
             	end else if (_ctrl.trace_instr_jump) begin
@@ -170,7 +171,7 @@ module riscv_debug_bfm #(
     			_ctrl.last_instr,
     			pc, 
     			instr, 
-    			intr,
+    			_ctrl.last_intr,
     			mem_addr,
     			mem_data,
     			mem_wmask,
@@ -389,6 +390,8 @@ module riscv_debug_bfm_ctrl_m();
 	
     reg            			in_reset = 0;
     
-    reg[31:0]				last_pc;
-    reg[31:0]				last_instr;
+    reg[31:0]				last_pc = {32{1'b0}};
+    reg[31:0]				last_instr = {32{1'b0}};
+    
+    reg						last_intr = 0;
 endmodule

@@ -45,6 +45,9 @@ class RiscvDebugBfm():
         self.frame_idx = 0
         self.last_instr = 0
         
+        self.sp_l = set()
+        self.last_sp = 0x00000000
+        
         self.last_limit = 0
 
         self.entry_exit_addr2cb_m = {}
@@ -286,6 +289,12 @@ class RiscvDebugBfm():
                     count):
 #        if mem_wmask:
 #            print("Write: " + hex(mem_waddr) + " = " + hex(mem_wmask))
+
+        if intr:
+            print("Intr:")
+            
+#        if mem_wmask: # and mem_waddr == 0x80009298:
+#            print("Write: " + hex(mem_waddr) + " " + hex(mem_wdata))
             
 #        print("instr_exec: " + hex(pc))
         for f in self.instr_exec_f:
@@ -366,6 +375,12 @@ class RiscvDebugBfm():
             sym = self.addr2sym_m[pc]
         else:
             sym = "<unknown " + hex(pc) + ">"
+
+        sp = self.reg(2)            
+        if sp < (self.last_sp-0x100) or sp > (self.last_sp+0x100):
+            print("Call: last_sp=0x%08x sp=0x%08x" % (self.last_sp, sp))
+#        print("Call: %s" % (sym,))
+        self.last_sp = sp
             
         self.callstack.append((pc,sym))
 
@@ -382,6 +397,11 @@ class RiscvDebugBfm():
             (pc,sym) = self.callstack.pop()
         else:
             sym = "<unknown " + hex(pc) + ">"
+            
+        sp = self.reg(2)            
+        if sp < (self.last_sp-0x100) or sp > (self.last_sp+0x100):
+            print("Ret: last_sp=0x%08x sp=0x%08x" % (self.last_sp, sp))
+        self.last_sp = sp
             
         if pc in self.entry_exit_addr2cb_m.keys():
             # Ensure we don't get stuck modifying the list in-flight
