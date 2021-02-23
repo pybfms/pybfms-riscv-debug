@@ -55,6 +55,7 @@ setup(
   install_requires=[
     'cocotb',
     'pybfms',
+    'pybfms-core-debug-common',
     'pyelftools'
   ],
 )

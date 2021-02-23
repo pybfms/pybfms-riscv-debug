@@ -10,9 +10,17 @@ module riscv_debug_bfm #(
 		input 				valid,
 		input[31:0] 		instr,
 		input				intr,
+		// RD
 		input[4:0] 			rd_addr,
 		input[31:0] 		rd_wdata,
+		
 		input[31:0]			pc,
+		
+		// CSR
+		input [11:0]		csr_waddr,
+		input [31:0]		csr_wdata,
+		input				csr_write,
+		
 		input[31:0]			mem_addr,
 		input[3:0]			mem_rmask,
 		input[3:0]			mem_wmask,

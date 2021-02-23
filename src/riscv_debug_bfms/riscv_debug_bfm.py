@@ -7,6 +7,8 @@ from enum import Enum, auto, IntEnum
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 import pybfms
+from core_debug_common.core_debug_bfm_base import CoreDebugBfmBase
+from riscv_debug_bfms.riscv_params_iterator import RiscvParamsIterator
 
 
 class RiscvDebugTraceLevel(IntEnum):
@@ -18,9 +20,10 @@ class RiscvDebugTraceLevel(IntEnum):
     pybfms.BfmType.Verilog : pybfms.bfm_hdl_path(__file__, "hdl/riscv_debug_bfm.v"),
     pybfms.BfmType.SystemVerilog : pybfms.bfm_hdl_path(__file__, "hdl/riscv_debug_bfm.v"),
     }, has_init=True)
-class RiscvDebugBfm():
+class RiscvDebugBfm(CoreDebugBfmBase):
 
     def __init__(self):
+        super().__init__(32, 32, True)
         self.busy = pybfms.lock()
         self.is_reset = False
         self.reset_ev = pybfms.event()
@@ -63,14 +66,17 @@ class RiscvDebugBfm():
                 target_addr_s.add(self.sym2addr_m[sym_or_addr])
             else:
                 raise Exception("Symbol \"" + sym_or_addr + "\" not found")
-        elif isinstance(sym_or_addr, list):
+        elif isinstance(sym_or_addr, (list,tuple,set)):
             for e in sym_or_addr:
+                print("e=" + str(e))
                 if isinstance(e, str):
                     # It's a symbol
                     if e in self.sym2addr_m.keys():
                         target_addr_s.add(self.sym2addr_m[e])
                     else:
                         raise Exception("Symbol \"" + e + "\" not found")
+                else:
+                    raise Exception("address not supported")
         else:
             # It's an address
             target_addr_s.add(sym_or_addr)
@@ -79,7 +85,7 @@ class RiscvDebugBfm():
         
         def waiter(pc, sym, is_entry):
             if is_entry and pc in target_addr_s:
-                ev.set()
+                ev.set(pc)
 
         for a in target_addr_s:                
             if a in self.entry_exit_addr2cb_m.keys():
@@ -91,6 +97,8 @@ class RiscvDebugBfm():
         
         for a in target_addr_s:                
             self.entry_exit_addr2cb_m[a].remove(waiter)
+            
+        return ev.data
         
     async def on_exit(self, sym_or_addr):
         """ Waits for a function identified by name or symbol to be entered"""
@@ -137,23 +145,10 @@ class RiscvDebugBfm():
             
             if l != RiscvDebugTraceLevel.All:
                 self._set_disasm_s("")
-    
-    def load_elf(self, elf_path):
-        """
-        Specifies the software image running on the core 
-        this BFM monitors
-        """
-        
-        # Load ELF and extract symbols
-        self.elffile_fp = open(elf_path, "rb")
-        self.elffile = ELFFile(self.elffile_fp)
-        self.symtab = self.elffile.get_section_by_name('.symtab')
-            
-        for i in range(self.symtab.num_symbols()):
-            sym = self.symtab.get_symbol(i)
-            if sym.name != "":
-                self.addr2sym_m[sym["st_value"]] = sym.name
-                self.sym2addr_m[sym.name] = sym["st_value"]
+                
+    def param_iter(self) -> RiscvParamsIterator:
+        """Returns a parameter iterator based on current state"""
+        return RiscvParamsIterator(self)
     
     def add_sym_cb(self, name, f):
         if self.elffile is None:
@@ -196,34 +191,42 @@ class RiscvDebugBfm():
 
         addr_v = []
         
-        for a in addrs:
-            if isinstance(a, str):
-                if self.elffile is None:
-                    raise Exception("No ELF file loaded")
-                sym = self.symtab.get_symbol_by_name(a)
+        if isinstance(addrs, int):
+            addr_v.append(addrs)
+        elif isinstance(addrs, str):
+            if self.elffile is None:
+                raise Exception("No ELF file loaded")
+            sym = self.symtab.get_symbol_by_name(addrs)
                 
-                if sym is None:
-                    raise Exception("No symbol named \"" + a + "\"")
+            if sym is None:
+                raise Exception("No symbol named \"" + addrs + "\"")
                 
-                addr_v.append(sym[0]["st_value"])
-            else:
-                addr_v.append(a)
+            addr_v.append(sym[0]["st_value"])
+        elif isinstance(addrs, (list,set,tuple)):
+            for a in addrs:
+                if isinstance(a, str):
+                    if self.elffile is None:
+                        raise Exception("No ELF file loaded")
+                    sym = self.symtab.get_symbol_by_name(a)
+                
+                    if sym is None:
+                        raise Exception("No symbol named \"" + a + "\"")
+                
+                    addr_v.append(sym[0]["st_value"])
+                else:
+                    addr_v.append(a)
                 
         def exec_f(pc, instr):
             if pc in addr_v:
-                result.append(pc)
-                ev.set()
+                ev.set(pc)
                 
         self.add_instr_exec_cb(exec_f)
         
         await ev.wait()
         
 #        self.del_instr_exec_cb(exec_f)
-        
-        if len(result) > 0:
-            return result[0]
-        else:
-            return -1
+
+        return ev.data        
         
     
     def _set_disasm_s(self, v):
@@ -288,10 +291,13 @@ class RiscvDebugBfm():
 #            print("Write: " + hex(mem_waddr) + " = " + hex(mem_wmask))
             
 #        print("instr_exec: " + hex(pc))
-        for f in self.instr_exec_f:
+        instr_exec_f_copy = self.instr_exec_f.copy()
+        for f in instr_exec_f_copy:
             f(pc, instr)
 
         if mem_wmask != 0:
+            # Update the mirror memory
+            self.mm.write_word(mem_waddr, mem_wdata, mem_wmask)
             for f in self.memwrite_cb:
                 f(mem_waddr, mem_wdata, mem_wmask)
 
