@@ -9,6 +9,7 @@ from riscv_debug_bfms.riscv_va_params_iterator import RiscvVaParamsIterator
 class RiscvParamsIterator(ParamsIterator):
     
     def __init__(self, bfm):
+        super().__init__()
         self.bfm = bfm
         self.param_n = 0
         
@@ -16,7 +17,7 @@ class RiscvParamsIterator(ParamsIterator):
         self.sp = bfm.reg(2)
         
         
-    def next8(self) -> int:
+    def int8(self) -> int:
         """Returns the next 8-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -33,7 +34,7 @@ class RiscvParamsIterator(ParamsIterator):
         else:
             return (ret & 0xFF)
 
-    def nextu8(self) -> int:
+    def uint8(self) -> int:
         """Returns the next 8-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -45,7 +46,7 @@ class RiscvParamsIterator(ParamsIterator):
         
         return (ret & 0xFF)
             
-    def next16(self) -> int:
+    def int16(self) -> int:
         """Returns the next 16-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -61,7 +62,7 @@ class RiscvParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextu16(self) -> int:
+    def uint16(self) -> int:
         """Returns the next 16-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -74,7 +75,7 @@ class RiscvParamsIterator(ParamsIterator):
         
         return ret    
     
-    def next32(self) -> int:
+    def int32(self) -> int:
         """Returns the next 32-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -90,7 +91,7 @@ class RiscvParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextu32(self) -> int:
+    def uint32(self) -> int:
         """Returns the next 32-bit parameter"""
         if self.param_n < 8:
             # Return register value
@@ -103,7 +104,7 @@ class RiscvParamsIterator(ParamsIterator):
 
         return ret
     
-    def next64(self) -> int:
+    def int64(self) -> int:
         """Returns the next 64-bit parameter"""
         # TODO:
         raise NotImplementedError("next64 not implemented")
@@ -122,7 +123,7 @@ class RiscvParamsIterator(ParamsIterator):
 
         return ret
 
-    def nextu64(self) -> int:
+    def uint64(self) -> int:
         """Returns the next 64-bit parameter"""
         # TODO:
         raise NotImplementedError("next64 not implemented")
@@ -138,16 +139,16 @@ class RiscvParamsIterator(ParamsIterator):
         
         return ret        
     
-    def nextptr(self) -> int:
+    def ptr(self) -> int:
         """Returns the next pointer parameter"""
         if self.bfm.addr_width == 32:
-            return self.nextu32()
+            return self.uint32()
         else:
-            return self.nextu64()
+            return self.uint64()
     
-    def nextstr(self) -> str:
+    def str(self) -> str:
         """Returns the next string-type (const char *) parameter"""
-        addr = self.nextu32()
+        addr = self.ptr()
         mm = self.bfm.mm
         ret = ""
 
@@ -164,8 +165,8 @@ class RiscvParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextva(self) -> 'ParamsIterator':
+    def va(self) -> 'ParamsIterator':
         """Returns the an iterator for variadic params"""
-        return RiscvVaParamsIterator(self.bfm, self.nextptr())
+        return RiscvVaParamsIterator(self.bfm, self.ptr())
 
 

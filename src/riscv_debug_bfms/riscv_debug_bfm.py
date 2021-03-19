@@ -7,7 +7,7 @@ from enum import Enum, auto, IntEnum
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 import pybfms
-from core_debug_common.core_debug_bfm_base import CoreDebugBfmBase
+from core_debug_common.core_debug_bfm_base import CoreDebugBfmBase, ExecEvent
 from riscv_debug_bfms.riscv_params_iterator import RiscvParamsIterator
 
 
@@ -127,7 +127,7 @@ class RiscvDebugBfm(CoreDebugBfmBase):
         ev = pybfms.event()
         
         def waiter(pc, sym, is_entry):
-            if is_entry and pc in target_addr_s:
+            if not is_entry and pc in target_addr_s:
                 ev.set()
 
         for a in target_addr_s:                
@@ -318,8 +318,10 @@ class RiscvDebugBfm(CoreDebugBfmBase):
         
         if last_is_push:
             # Last was the push, so 'pc' is the target
+            super().execute(pc, ExecEvent.Call)
             self.do_call(pc)
         elif last_is_pop:
+            super().execute(pc, ExecEvent.Ret)
             self.do_ret(pc)
         elif last_is_push and last_is_pop:
             print("TODO: both push/pop")

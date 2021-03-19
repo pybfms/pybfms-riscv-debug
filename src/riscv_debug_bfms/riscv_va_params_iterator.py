@@ -12,7 +12,7 @@ class RiscvVaParamsIterator(ParamsIterator):
         self.bfm = bfm
         self.addr = addr
         
-    def next8(self) -> int:
+    def int8(self) -> int:
         """Returns the next 8-bit parameter"""
         ret = self.bfm.mm.read8(self.addr)
         self.addr += 1
@@ -23,7 +23,7 @@ class RiscvVaParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextu8(self) -> int:
+    def uint8(self) -> int:
         """Returns the next 8-bit parameter"""
         ret = self.bfm.mm.read8(self.addr)
         self.addr += 1
@@ -31,7 +31,7 @@ class RiscvVaParamsIterator(ParamsIterator):
         ret &= 0xFF
         return ret
     
-    def next16(self) -> int:
+    def int16(self) -> int:
         """Returns the next 16-bit parameter"""
         ret = self.bfm.mm.read16(self.addr)
         self.addr += 2
@@ -43,7 +43,7 @@ class RiscvVaParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextu16(self) -> int:
+    def uint16(self) -> int:
         """Returns the next 16-bit parameter"""
         ret = self.bfm.mm.read16(self.addr)
         self.addr += 2
@@ -52,7 +52,7 @@ class RiscvVaParamsIterator(ParamsIterator):
         
         return ret
     
-    def next32(self) -> int:
+    def int32(self) -> int:
         """Returns the next 32-bit parameter"""
         ret = self.bfm.mm.read32(self.addr)
         self.addr += 4
@@ -63,7 +63,7 @@ class RiscvVaParamsIterator(ParamsIterator):
 
         return ret
     
-    def nextu32(self) -> int:
+    def uint32(self) -> int:
         """Returns the next 32-bit parameter"""
         
         ret = self.bfm.mm.read32(self.addr)
@@ -73,7 +73,7 @@ class RiscvVaParamsIterator(ParamsIterator):
         
         return ret
     
-    def next64(self) -> int:
+    def int64(self) -> int:
         """Returns the next 64-bit parameter"""
         ret = self.bfm.mm.read64(self.addr)
         self.addr += 4
@@ -84,7 +84,7 @@ class RiscvVaParamsIterator(ParamsIterator):
 
         return ret
     
-    def nextu64(self) -> int:
+    def uint64(self) -> int:
         """Returns the next 64-bit parameter"""
         ret = self.bfm.mm.read64(self.addr)
         self.addr += 4
@@ -93,16 +93,16 @@ class RiscvVaParamsIterator(ParamsIterator):
 
         return ret
     
-    def nextptr(self) -> int:
+    def ptr(self) -> int:
         """Returns the next pointer parameter"""
         if self.bfm.addr_width == 32:
-            return self.nextu32()
+            return self.uint32()
         else:
-            return self.nextu64()
+            return self.uint64()
     
-    def nextstr(self) -> str:
+    def str(self) -> str:
         """Returns the next string-type (const char *) parameter"""
-        addr = self.nextptr()
+        addr = self.ptr()
         mm = self.bfm.mm
         ret = ""
 
@@ -119,6 +119,6 @@ class RiscvVaParamsIterator(ParamsIterator):
             
         return ret
     
-    def nextva(self) -> 'ParamsIterator':
+    def va(self) -> 'ParamsIterator':
         """Returns the an iterator for variadic params"""
         raise NotImplementedError("nextva not implemented")        
