@@ -4,7 +4,9 @@ Created on Feb 21, 2021
 @author: mballance
 '''
 from core_debug_common import ParamsIterator
+import hvlrpc
 from riscv_debug_bfms.riscv_va_params_iterator import RiscvVaParamsIterator
+
 
 class RiscvParamsIterator(ParamsIterator):
     
@@ -165,7 +167,7 @@ class RiscvParamsIterator(ParamsIterator):
             
         return ret
     
-    def va(self) -> 'ParamsIterator':
+    def va(self) -> hvlrpc.va_list:
         """Returns the an iterator for variadic params"""
         return RiscvVaParamsIterator(self.bfm, self.ptr())
 

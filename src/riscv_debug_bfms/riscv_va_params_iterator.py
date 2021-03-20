@@ -3,9 +3,9 @@ Created on Feb 21, 2021
 
 @author: mballance
 '''
-from core_debug_common.params_iterator import ParamsIterator
+import hvlrpc
 
-class RiscvVaParamsIterator(ParamsIterator):
+class RiscvVaParamsIterator(hvlrpc.va_list):
     """Implements the variadic-argument iterator for RISC-V"""
     
     def __init__(self, bfm, addr):
