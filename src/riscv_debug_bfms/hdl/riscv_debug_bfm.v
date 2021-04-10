@@ -187,6 +187,20 @@ module riscv_debug_bfm #(
     end
     endtask
     
+    task _set_tid_c(
+    	input reg[7:0] 		idx, 
+    	input reg[7:0] 		ch);
+   	begin
+   		// Must invert the actual index
+   		idx = MSG_SZ-idx-1;
+		ctxt.tid = ((ctxt.tid & ~('hFF << 8*idx)) | (ch << 8*idx));
+   	end
+   	endtask
+   	
+   	task _clr_tid;
+   		ctxt.tid = {MSG_SZ{1'b0}};
+   	endtask
+    
     task _set_func_c(
     	input reg[7:0]		frame,
     	input reg[7:0] 		idx, 
@@ -255,6 +269,12 @@ module riscv_debug_bfm #(
    	end
     endtask
     
+    task _clr_disasm;
+   	begin
+   		ctxt.disasm = {MSG_SZ{1'b0}};
+   	end
+    endtask
+    
     task _set_disasm_c(input reg[7:0] idx, input reg[7:0] ch);
    	begin
    		// Must invert the actual index
@@ -308,7 +328,8 @@ module riscv_debug_bfm_ctxt_m #(
 	reg[31:0]				pc;
 	riscv_debug_bfm_regs_m	regs();
 
-	// TODO: Should identify stack in some way (thread?)
+	// Identifier for the thread shown in the stack trace
+	reg[8*MSG_SZ-1:0]		tid = {MSG_SZ{8'h00}};
 	reg[8*MSG_SZ-1:0]		frame0 = {MSG_SZ{8'h00}};
 	reg[8*MSG_SZ-1:0]		frame1 = {MSG_SZ{8'h00}};
 	reg[8*MSG_SZ-1:0]		frame2 = {MSG_SZ{8'h00}};

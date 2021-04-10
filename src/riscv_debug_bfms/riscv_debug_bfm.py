@@ -8,6 +8,7 @@ import core_debug_common as cdbgc
 from core_debug_common.stack_frame import StackFrame
 import pybfms
 from riscv_debug_bfms.riscv_params_iterator import RiscvParamsIterator
+from core_debug_common.callframe_window_mgr import CallframeWindowMgr
 
 
 class RiscvDebugTraceLevel(IntEnum):
@@ -29,16 +30,14 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         
         self.en_disasm = True
         
-        # Track the current values of the strings
-        self.disasm_s = ""
+        self.window_mgr = CallframeWindowMgr(
+            8,
+            self._set_func_s,
+            self._clr_func,
+            lambda t : self._set_tid_s(t.tid))
         
         self.regs = [0]*32
         
-        self.addr2sym_m = {}
-        self.sym2addr_m = {}
-        
-        self.callstack = []
-        self.frame_idx = 0
         self.last_instr = 0
         
         self.sp_l = set()
@@ -46,9 +45,6 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         
         self.last_limit = 0
 
-        self.entry_exit_addr2cb_m = {}
-        self.entry_exit_cb2addr_m = {}
-        
         self.trace_level : RiscvDebugTraceLevel = RiscvDebugTraceLevel.All
         
     def set_trace_level(self, l : RiscvDebugTraceLevel):
@@ -68,6 +64,7 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         return self.regs[addr]
     
     def _set_disasm_s(self, v):
+        self._clr_disasm()
 
         if len(v) > self.msg_sz:
             v = v[:-3]
@@ -75,15 +72,24 @@ class RiscvDebugBfm(cdbgc.BfmBase):
             
         for i,c in enumerate(v.encode()):
             self._set_disasm_c(i, c)
-
-        # If the new string is shorter than the old string,
-        # null out the leftover characters
-        if len(self.disasm_s) > len(v):
-            i=len(v)
-            while i < len(self.disasm_s):
-                self._set_disasm_c(i, 0)
-                i+=1
-        self.disasm_s = v
+        
+    def _set_tid_s(self, v):
+        self._clr_tid()
+        if len(v) > self.msg_sz:
+            v = v[:-3]
+            v += "..."
+        
+        for i,c in enumerate(v.encode()):
+            self._set_tid_c(i, c)
+            
+    @pybfms.import_task(pybfms.uint8_t, pybfms.uint8_t)
+    def _set_tid_c(self, i, v):
+        pass
+            
+    @pybfms.import_task()
+    def _clr_tid(self):
+        pass
+        
         
     def _set_func_s(self, frame, v):
         self._clr_func(frame)
@@ -92,7 +98,7 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         if len(v) > self.msg_sz:
             v = v[:-3]
             v += "..."
-        
+
         for i,c in enumerate(v.encode()):
             self._set_func_c(frame, i, c)
 
@@ -126,9 +132,9 @@ class RiscvDebugBfm(cdbgc.BfmBase):
 #            print("Write: " + hex(mem_waddr) + " " + hex(mem_wdata))
             
 #        print("instr_exec: " + hex(pc))
-        instr_exec_f_copy = self.instr_exec_f.copy()
-        for f in instr_exec_f_copy:
-            f(pc, instr)
+#        instr_exec_f_copy = self.instr_exec_f.copy()
+#        for f in instr_exec_f_copy:
+#            f(pc, instr)
 
         if mem_wmask != 0:
             # Update the mirror memory
@@ -142,11 +148,10 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         
         if last_is_push:
             # Last was the push, so 'pc' is the target
-            super().execute(pc, instr, cdbgc.ExecEvent.Call)
-            self.do_call(pc)
+            retaddr = last_pc + 4 if (instr & 0x3) == 3 else last_pc + 2
+            super().execute(pc, retaddr, instr, cdbgc.ExecEvent.Call)
         elif last_is_pop:
-            super().execute(pc, instr, cdbgc.ExecEvent.Ret)
-            self.do_ret(pc)
+            super().execute(pc, last_pc, instr, cdbgc.ExecEvent.Ret)
         elif last_is_push and last_is_pop:
             print("TODO: both push/pop")
         else:
@@ -202,67 +207,22 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         
         return (is_push,is_pop,npc)
 
-    def enter(self, frame : StackFrame):
-        cdbgc.BfmBase.enter(self, frame)
-        
-    def exit(self, frame:StackFrame):
-        cdbgc.BfmBase.exit(self, frame)
-        
-    def do_call(self, pc):
-        pass
-#         if pc in self.addr2sym_m.keys():
-#             sym = self.addr2sym_m[pc]
-#         else:
-#             sym = "<unknown " + hex(pc) + ">"
-# 
-#         sp = self.reg(2)            
-#         if sp < (self.last_sp-0x100) or sp > (self.last_sp+0x100):
-#             print("Call: last_sp=0x%08x sp=0x%08x" % (self.last_sp, sp))
-# #        print("Call: %s" % (sym,))
-#         self.last_sp = sp
-#             
-#         self.callstack.append((pc,sym))
-# 
-#         if pc in self.entry_exit_addr2cb_m.keys():
-#             # Ensure we don't get stuck modifying the list in-flight
-#             for cb in self.entry_exit_addr2cb_m[pc]:
-#                 cb(pc, sym, True)
+    def enter(self):
+        self.window_mgr.enter(self.active_thread)
                 
-#        self._set_func_s(self.frame_idx, sym)
-#        self.frame_idx += 1
-    
-    def do_ret(self, pc):
-        pass
-        if len(self.callstack) > 0:
-            (pc,sym) = self.callstack.pop()
-        else:
-            sym = "<unknown " + hex(pc) + ">"
-            
-        sp = self.reg(2)            
-        if sp < (self.last_sp-0x100) or sp > (self.last_sp+0x100):
-            print("Ret: last_sp=0x%08x sp=0x%08x" % (self.last_sp, sp))
-        self.last_sp = sp
-            
-        if pc in self.entry_exit_addr2cb_m.keys():
-            # Ensure we don't get stuck modifying the list in-flight
-            for cb in self.entry_exit_addr2cb_m[pc]:
-                cb(pc, sym, False)
-
-        # TODO: handle swapping windows
-
-        if self.frame_idx > 0:
-            self._clr_func(self.frame_idx)
-            self.frame_idx -= 1
-        else:
-            self._clr_func(0)
-        
-            
+    def exit(self, frame : StackFrame):
+        self.window_mgr.exit(self.active_thread)
+ 
     @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t)
     def _write_reg(self, addr, data):
         self.regs[addr] = data
     
     @pybfms.import_task(pybfms.uint8_t,pybfms.uint8_t,pybfms.uint8_t)
     def _set_func_c(self, frame, idx, ch):
+        pass
+    
+    @pybfms.import_task()
+    def _clr_disasm(self):
         pass
     
     @pybfms.import_task(pybfms.uint8_t,pybfms.uint8_t)
