@@ -155,6 +155,8 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         elif last_is_push and last_is_pop:
             print("TODO: both push/pop")
         else:
+            # Pass execution along to BFM
+            super().execute(pc, last_pc, instr, 0)
             # TODO: If this is a branch instruction, check
             # to see if we've landed on a symbol
             pass

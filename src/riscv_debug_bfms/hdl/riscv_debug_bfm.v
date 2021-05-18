@@ -77,6 +77,15 @@ module riscv_debug_bfm #(
             			18: ctxt.regs.x18 <= rd_wdata;
             			19: ctxt.regs.x19 <= rd_wdata;
             			20: ctxt.regs.x20 <= rd_wdata;
+            			21: ctxt.regs.x21 <= rd_wdata;
+            			22: ctxt.regs.x22 <= rd_wdata;
+            			23: ctxt.regs.x23 <= rd_wdata;
+            			24: ctxt.regs.x24 <= rd_wdata;
+            			25: ctxt.regs.x25 <= rd_wdata;
+            			26: ctxt.regs.x26 <= rd_wdata;
+            			27: ctxt.regs.x27 <= rd_wdata;
+            			28: ctxt.regs.x28 <= rd_wdata;
+            			29: ctxt.regs.x29 <= rd_wdata;
             			30: ctxt.regs.x30 <= rd_wdata;
             			31: ctxt.regs.x31 <= rd_wdata;
             		endcase
