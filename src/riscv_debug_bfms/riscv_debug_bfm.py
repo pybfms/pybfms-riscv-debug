@@ -14,7 +14,7 @@ from core_debug_common.callframe_window_mgr import CallframeWindowMgr
 class RiscvDebugTraceLevel(IntEnum):
     Call = 0
     Jump = 1
-    All = 2
+    All  = 2
     
 @pybfms.bfm(hdl={
     pybfms.BfmType.Verilog : pybfms.bfm_hdl_path(__file__, "hdl/riscv_debug_bfm.v"),
@@ -111,22 +111,28 @@ class RiscvDebugBfm(cdbgc.BfmBase):
     def _set_parameters(self, msg_sz):
         self.msg_sz = msg_sz
 
-    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint32_t)
+    @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint8_t,pybfms.uint32_t,pybfms.uint32_t,pybfms.uint8_t,pybfms.uint8_t,pybfms.uint32_t)
     def _instr_exec(self, 
                     last_pc,
                     last_instr,
                     pc,
                     instr,
                     intr,
-                    mem_waddr,
-                    mem_wdata,
+                    iret,
+                    mem_addr,
+                    mem_data,
                     mem_wmask,
+                    mem_rmask,
                     count):
 #        if mem_wmask:
 #            print("Write: " + hex(mem_waddr) + " = " + hex(mem_wmask))
 
+        flags = 0
+
         if intr:
-            print("Intr:")
+            flags |= cdbgc.ExecEvent.Excp
+        elif iret:
+            flags |= cdbgc.ExecEvent.Eret
             
 #        if mem_wmask: # and mem_waddr == 0x80009298:
 #            print("Write: " + hex(mem_waddr) + " " + hex(mem_wdata))
@@ -138,7 +144,10 @@ class RiscvDebugBfm(cdbgc.BfmBase):
 
         if mem_wmask != 0:
             # Update the mirror memory
-            self.memwrite(mem_waddr, mem_wdata, mem_wmask)
+            self.memwrite(pc, mem_addr, mem_data, mem_wmask)
+        elif mem_rmask != 0:
+            self.memread(pc, mem_addr, mem_data, mem_rmask)
+            
 
         # Handle disassembly            
         if self.trace_level == RiscvDebugTraceLevel.All:
@@ -149,14 +158,16 @@ class RiscvDebugBfm(cdbgc.BfmBase):
         if last_is_push:
             # Last was the push, so 'pc' is the target
             retaddr = last_pc + 4 if (instr & 0x3) == 3 else last_pc + 2
-            super().execute(pc, retaddr, instr, cdbgc.ExecEvent.Call)
+            flags |= cdbgc.ExecEvent.Call
+            super().execute(pc, retaddr, instr, flags)
         elif last_is_pop:
-            super().execute(pc, last_pc, instr, cdbgc.ExecEvent.Ret)
+            flags |= cdbgc.ExecEvent.Ret
+            super().execute(pc, last_pc, instr, flags)
         elif last_is_push and last_is_pop:
             print("TODO: both push/pop")
         else:
             # Pass execution along to BFM
-            super().execute(pc, last_pc, instr, 0)
+            super().execute(pc, last_pc, instr, flags)
             # TODO: If this is a branch instruction, check
             # to see if we've landed on a symbol
             pass
@@ -214,6 +225,12 @@ class RiscvDebugBfm(cdbgc.BfmBase):
                 
     def exit(self, frame : StackFrame):
         self.window_mgr.exit(self.active_thread)
+        
+    def excp(self):
+        self.window_mgr.set_thread(self.active_thread)
+        
+    def eret(self):
+        self.window_mgr.set_thread(self.active_thread)
  
     @pybfms.export_task(pybfms.uint32_t,pybfms.uint32_t)
     def _write_reg(self, addr, data):

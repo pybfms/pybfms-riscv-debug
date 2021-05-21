@@ -10,6 +10,7 @@ module riscv_debug_bfm #(
 		input 				valid,
 		input[31:0] 		instr,
 		input				intr,
+		input				iret,
 		// RD
 		input[4:0] 			rd_addr,
 		input[31:0] 		rd_wdata,
@@ -44,6 +45,7 @@ module riscv_debug_bfm #(
             	_ctrl.last_instr <= instr;
             	_ctrl.last_pc    <= pc;
             	_ctrl.last_intr  <= intr;
+            	_ctrl.last_iret  <= iret;
             	_ctrl.instr_count = _ctrl.instr_count + 1;
             	ctxt.pc <= pc;
             	ctxt.instr <= instr;
@@ -93,8 +95,9 @@ module riscv_debug_bfm #(
             	
             	if (_ctrl.trace_instr_all 
             			|| (_ctrl.trace_mem_writes && |mem_wmask)
+            			|| (_ctrl.trace_mem_reads && |mem_rmask)
             			|| (_ctrl.instr_limit_count == 1)
-            			|| _ctrl.last_intr) begin
+            			|| _ctrl.last_intr || _ctrl.last_iret) begin
             		_update_exec_state();
             		_ctrl.reg_written <= 32'h0;
             	end else if (_ctrl.trace_instr_jump) begin
@@ -150,37 +153,37 @@ module riscv_debug_bfm #(
     	end
     	
     	// Send previously-updated registers
-    	if (_ctrl.reg_written[1]) _write_reg(rd_addr, ctxt.regs.x1);
-    	if (_ctrl.reg_written[2]) _write_reg(rd_addr, ctxt.regs.x2);
-    	if (_ctrl.reg_written[3]) _write_reg(rd_addr, ctxt.regs.x3);
-    	if (_ctrl.reg_written[4]) _write_reg(rd_addr, ctxt.regs.x4);
-    	if (_ctrl.reg_written[5]) _write_reg(rd_addr, ctxt.regs.x5);
-    	if (_ctrl.reg_written[6]) _write_reg(rd_addr, ctxt.regs.x6);
-    	if (_ctrl.reg_written[7]) _write_reg(rd_addr, ctxt.regs.x7);
-    	if (_ctrl.reg_written[8]) _write_reg(rd_addr, ctxt.regs.x8);
-    	if (_ctrl.reg_written[9]) _write_reg(rd_addr, ctxt.regs.x9);
-    	if (_ctrl.reg_written[10]) _write_reg(rd_addr, ctxt.regs.x10);
-    	if (_ctrl.reg_written[11]) _write_reg(rd_addr, ctxt.regs.x11);
-    	if (_ctrl.reg_written[12]) _write_reg(rd_addr, ctxt.regs.x12);
-    	if (_ctrl.reg_written[13]) _write_reg(rd_addr, ctxt.regs.x13);
-    	if (_ctrl.reg_written[14]) _write_reg(rd_addr, ctxt.regs.x14);
-    	if (_ctrl.reg_written[15]) _write_reg(rd_addr, ctxt.regs.x15);
-    	if (_ctrl.reg_written[16]) _write_reg(rd_addr, ctxt.regs.x16);
-    	if (_ctrl.reg_written[17]) _write_reg(rd_addr, ctxt.regs.x17);
-    	if (_ctrl.reg_written[18]) _write_reg(rd_addr, ctxt.regs.x18);
-    	if (_ctrl.reg_written[19]) _write_reg(rd_addr, ctxt.regs.x19);
-    	if (_ctrl.reg_written[20]) _write_reg(rd_addr, ctxt.regs.x20);
-    	if (_ctrl.reg_written[21]) _write_reg(rd_addr, ctxt.regs.x21);
-    	if (_ctrl.reg_written[22]) _write_reg(rd_addr, ctxt.regs.x22);
-    	if (_ctrl.reg_written[23]) _write_reg(rd_addr, ctxt.regs.x23);
-    	if (_ctrl.reg_written[24]) _write_reg(rd_addr, ctxt.regs.x24);
-    	if (_ctrl.reg_written[25]) _write_reg(rd_addr, ctxt.regs.x25);
-    	if (_ctrl.reg_written[26]) _write_reg(rd_addr, ctxt.regs.x26);
-    	if (_ctrl.reg_written[27]) _write_reg(rd_addr, ctxt.regs.x27);
-    	if (_ctrl.reg_written[28]) _write_reg(rd_addr, ctxt.regs.x28);
-    	if (_ctrl.reg_written[29]) _write_reg(rd_addr, ctxt.regs.x29);
-    	if (_ctrl.reg_written[30]) _write_reg(rd_addr, ctxt.regs.x30);
-    	if (_ctrl.reg_written[31]) _write_reg(rd_addr, ctxt.regs.x31);
+    	if (_ctrl.reg_written[1]) _write_reg(1, ctxt.regs.x1);
+    	if (_ctrl.reg_written[2]) _write_reg(2, ctxt.regs.x2);
+    	if (_ctrl.reg_written[3]) _write_reg(3, ctxt.regs.x3);
+    	if (_ctrl.reg_written[4]) _write_reg(4, ctxt.regs.x4);
+    	if (_ctrl.reg_written[5]) _write_reg(5, ctxt.regs.x5);
+    	if (_ctrl.reg_written[6]) _write_reg(6, ctxt.regs.x6);
+    	if (_ctrl.reg_written[7]) _write_reg(7, ctxt.regs.x7);
+    	if (_ctrl.reg_written[8]) _write_reg(8, ctxt.regs.x8);
+    	if (_ctrl.reg_written[9]) _write_reg(9, ctxt.regs.x9);
+    	if (_ctrl.reg_written[10]) _write_reg(10, ctxt.regs.x10);
+    	if (_ctrl.reg_written[11]) _write_reg(11, ctxt.regs.x11);
+    	if (_ctrl.reg_written[12]) _write_reg(12, ctxt.regs.x12);
+    	if (_ctrl.reg_written[13]) _write_reg(13, ctxt.regs.x13);
+    	if (_ctrl.reg_written[14]) _write_reg(14, ctxt.regs.x14);
+    	if (_ctrl.reg_written[15]) _write_reg(15, ctxt.regs.x15);
+    	if (_ctrl.reg_written[16]) _write_reg(16, ctxt.regs.x16);
+    	if (_ctrl.reg_written[17]) _write_reg(17, ctxt.regs.x17);
+    	if (_ctrl.reg_written[18]) _write_reg(18, ctxt.regs.x18);
+    	if (_ctrl.reg_written[19]) _write_reg(19, ctxt.regs.x19);
+    	if (_ctrl.reg_written[20]) _write_reg(20, ctxt.regs.x20);
+    	if (_ctrl.reg_written[21]) _write_reg(21, ctxt.regs.x21);
+    	if (_ctrl.reg_written[22]) _write_reg(22, ctxt.regs.x22);
+    	if (_ctrl.reg_written[23]) _write_reg(23, ctxt.regs.x23);
+    	if (_ctrl.reg_written[24]) _write_reg(24, ctxt.regs.x24);
+    	if (_ctrl.reg_written[25]) _write_reg(25, ctxt.regs.x25);
+    	if (_ctrl.reg_written[26]) _write_reg(26, ctxt.regs.x26);
+    	if (_ctrl.reg_written[27]) _write_reg(27, ctxt.regs.x27);
+    	if (_ctrl.reg_written[28]) _write_reg(28, ctxt.regs.x28);
+    	if (_ctrl.reg_written[29]) _write_reg(29, ctxt.regs.x29);
+    	if (_ctrl.reg_written[30]) _write_reg(30, ctxt.regs.x30);
+    	if (_ctrl.reg_written[31]) _write_reg(31, ctxt.regs.x31);
 
     	// Finally, signal the instruction execution
     	_instr_exec(
@@ -189,9 +192,11 @@ module riscv_debug_bfm #(
     			pc, 
     			instr, 
     			_ctrl.last_intr,
+    			_ctrl.last_iret,
     			mem_addr,
     			mem_data,
     			mem_wmask,
+    			mem_rmask,
     			_ctrl.instr_count);
     end
     endtask
@@ -396,8 +401,8 @@ module riscv_debug_bfm_regs_m();
 	wire[31:0]				a2 = x12;
 	wire[31:0]				a3 = x13;
 	wire[31:0]				a4 = x14;
-	wire[31:0]				a5 = x14;
-	wire[31:0]				a6 = x15;
+	wire[31:0]				a5 = x15;
+	wire[31:0]				a6 = x16;
 	wire[31:0]				a7 = x17;
 	wire[31:0]				s2 = x18;
 	wire[31:0]				s3 = x19;
@@ -423,6 +428,7 @@ module riscv_debug_bfm_ctrl_m();
 	reg						trace_instr_call  = 1;
 	reg						trace_reg_writes  = 0;
 	reg						trace_mem_writes  = 1;
+	reg						trace_mem_reads   = 0;
 	reg[31:0]				instr_limit_count = 0;
 	reg[31:0]				instr_count = 0;
 	
@@ -432,4 +438,5 @@ module riscv_debug_bfm_ctrl_m();
     reg[31:0]				last_instr = {32{1'b0}};
     
     reg						last_intr = 0;
+    reg						last_iret = 0;
 endmodule
