@@ -109,16 +109,15 @@ module riscv_debug_bfm #(
            			end 
             	end else if (_ctrl.trace_instr_call) begin
             		// Notify on call/ret instructions
-            		if (_ctrl.last_instr[6:0] == 7'b1101111 || // jal
-           				_ctrl.last_instr[6:0] == 7'b1100111) begin  // jalr/*&& _ctrl.last_instr[11:7] != 5'b0*/)
-           				if (_ctrl.last_instr[11:7] == 1 || _ctrl.last_instr[11:7] == 5 ||
-           						_ctrl.last_instr[19:15] == 1 || _ctrl.last_instr[19:15] == 5) begin
-           					// Likely call or return
-           					// Note that we update the Python environment on
-           					// the target instruction, not its source
-           					_update_exec_state();
-           					_ctrl.reg_written <= 32'h0;
-           				end
+            		if ((_ctrl.last_instr[6:0] == 7'b1101111 && // jal
+           				(_ctrl.last_instr[11:7] == 1 || _ctrl.last_instr[11:7] == 5 ||
+           					_ctrl.last_instr[19:15] == 1 || _ctrl.last_instr[19:15] == 5))
+           				|| _ctrl.last_instr[6:0] == 7'b1100111) begin  // jalr
+       					// Likely call or return
+       					// Note that we update the Python environment on
+      					// the target instruction, not its source
+       					_update_exec_state();
+       					_ctrl.reg_written <= 32'h0;
             		end else if ((_ctrl.last_instr[1:0] == 'b10 && _ctrl.last_instr[15:13] == 'b100)
             				|| (_ctrl.last_instr[1:0] == 'b10 && _ctrl.last_instr[15:13] == 'b001)) begin
             			// Compressed c.jal/c.jalr
