@@ -1,0 +1,21 @@
+package:
+    name: pybfms-riscv-debug
+    version: None
+    deps:
+        - name: cocotb
+          src: pypi
+        - name: pybfms
+          src: pypi
+        - name: pyelftools
+          src: pypi
+        - name: pybfms-core-debug-common
+          url: https://github.com/pybfms/pybfms-core-debug-common.git
+    dev-deps:
+        - name: cocotb
+          src: pypi
+        - name: pybfms
+          src: pypi
+        - name: pyelftools
+          src: pypi
+        - name: pybfms-core-debug-common
+          url: https://github.com/pybfms/pybfms-core-debug-common.git
